@@ -130,16 +130,21 @@ using BigNumContext = openssl::Context;
 	Z(32);
 	S("\x20"_q);
 	R(32);
-	S("\x00\x20"_q);
-	G(0);
+    
+	// 1. Изменяем длину шифров на 34 байта (17 шифров) и убираем G(0)
+	S("\x00\x22"_q);
 	S(""
-		"\x13\x01\x13\x02\x13\x03\xc0\x2b\xc0\x2f\xc0\x2c\xc0\x30\xcc\xa9"
-		"\xcc\xa8\xc0\x13\xc0\x14\x00\x9c\x00\x9d\x00\x2f\x00\x35\x01\x00"
-		""_q);
-	OpenScope();
-	G(2);
-	S("\x00\x00"_q);
+		"\x13\x01\x13\x02\x13\x03\xc0\x2b\xc0\x2f\xcc\xa9\xcc\xa8\xc0\x2c"
+		"\xc0\x30\xc0\x09\xc0\x13\xc0\x0a\xc0\x14\x00\x9c\x00\x9d\x00\x2f"
+		"\x00\x35"_q);
+        
+	S("\x01\x00"_q); // Метод компрессии (1 байт длины, значение 00)
+    
+	OpenScope(); // Начало блока расширений
+	// 2. Убран хромовский GREASE G(2) перед перестановками
+    
 	OpenPermutation(); {
+        // [1/15] SNI (Server Name)
 		StartPermutationElement(); {
 			S("\x00\x00"_q);
 			OpenScope();
@@ -151,78 +156,70 @@ using BigNumContext = openssl::Context;
 			CloseScope();
 			CloseScope();
 		}
+        // [2/15] Status Request
 		StartPermutationElement(); {
 			S("\x00\x05\x00\x05\x01\x00\x00\x00\x00"_q);
 		}
+        // [3/15] Supported Groups (Firefox: X25519, secp256r1, secp384r1) - без GREASE
 		StartPermutationElement(); {
-			S("\x00\x0a\x00\x0c\x00\x0a"_q);
-			G(4);
-			S("\x11\xec\x00\x1d\x00\x17\x00\x18"_q);
+			S("\x00\x0a\x00\x08\x00\x06\x00\x1d\x00\x17\x00\x18"_q);
 		}
+        // [4/15] EC Point Formats
 		StartPermutationElement(); {
 			S("\x00\x0b\x00\x02\x01\x00"_q);
 		}
+        // [5/15] Signature Algorithms
 		StartPermutationElement(); {
 			S(""
 				"\x00\x0d\x00\x12\x00\x10\x04\x03\x08\x04\x04\x01\x05\x03"
 				"\x08\x05\x05\x01\x08\x06\x06\x01"_q);
 		}
+        // [6/15] ALPN (h2, http/1.1)
 		StartPermutationElement(); {
 			S(""
 				"\x00\x10\x00\x0e\x00\x0c\x02\x68\x32\x08\x68\x74\x74\x70"
 				"\x2f\x31\x2e\x31"_q);
 		}
+        // [7/15] SCT (Signed Certificate Timestamp)
 		StartPermutationElement(); {
 			S("\x00\x12\x00\x00"_q);
 		}
+        // [8/15] Extended Master Secret
 		StartPermutationElement(); {
 			S("\x00\x17\x00\x00"_q);
 		}
+        // [9/15] Compress Certificate
 		StartPermutationElement(); {
 			S("\x00\x1b\x00\x03\x02\x00\x02"_q);
 		}
+        // [10/15] Record Size Limit (специфично для Firefox, ID: 0x001c)
+		StartPermutationElement(); {
+			S("\x00\x1c\x00\x02\x40\x01"_q);
+		}
+        // [11/15] Session Ticket
 		StartPermutationElement(); {
 			S("\x00\x23\x00\x00"_q);
 		}
+        // [12/15] Supported Versions (Firefox: TLS 1.3, TLS 1.2) - без GREASE
 		StartPermutationElement(); {
-			S("\x00\x2b\x00\x07\x06"_q);
-			G(6);
-			S("\x03\x04\x03\x03"_q);
+			S("\x00\x2b\x00\x05\x04\x03\x04\x03\x03"_q);
 		}
+        // [13/15] PSK Key Exchange Modes
 		StartPermutationElement(); {
 			S("\x00\x2d\x00\x02\x01\x01"_q);
 		}
+        // [14/15] Key Share (Firefox стандартно предлагает X25519) - без GREASE и PQ-гибридов
 		StartPermutationElement(); {
-			S("\x00\x33\x04\xef\x04\xed"_q);
-			G(4);
-			S("\x00\x01\x00\x11\xec\x04\xc0"_q);
-			M();
-			K();
-			S("\x00\x1d\x00\x20"_q);
+			S("\x00\x33\x00\x26\x00\x24\x00\x1d\x00\x20"_q);
 			K();
 		}
-		StartPermutationElement(); {
-			S("\x44\xcd\x00\x05\x00\x03\x02\x68\x32"_q);
-		}
-		StartPermutationElement(); {
-			S("\xfe\x0d"_q);
-			OpenScope();
-			S("\x00\x00\x01\x00\x01"_q);
-			R(1);
-			S("\x00\x20"_q);
-			R(32);
-			OpenScope();
-			E();
-			CloseScope();
-			CloseScope();
-		}
+        // [15/15] Renegotiation Info
 		StartPermutationElement(); {
 			S("\xff\x01\x00\x01\x00"_q);
 		}
 	} ClosePermutation();
-	G(3);
-	S("\x00\x01\x00"_q);
-	P();
+    
+	// 3. Полностью убраны мусорные блоки паддингов (G(3), константные строки и P())
 	CloseScope();
 	CloseScope();
 	CloseScope();
